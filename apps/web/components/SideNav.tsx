@@ -151,6 +151,7 @@ const bottomLinks: NavItem[] = [
     ),
     hideInMail: true,
   },
+  { name: "Integrations", href: "/integrations", icon: RatioIcon },
   { name: "Premium", href: "/premium", icon: CrownIcon },
   { name: "Settings", href: "/settings", icon: CogIcon },
 ];

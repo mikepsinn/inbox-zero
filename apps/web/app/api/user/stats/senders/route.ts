@@ -7,6 +7,9 @@ import {
   zodPeriod,
 } from "@inboxzero/tinybird";
 import { withError } from "@/utils/middleware";
+import { createScopedLogger } from "@/utils/logger";
+
+const logger = createScopedLogger("SenderStats");
 
 const senderStatsQuery = z.object({
   period: zodPeriod,
@@ -21,39 +24,102 @@ async function getSendersTinybird(
     ownerEmail: string;
   },
 ) {
-  const [mostSent, mostSentDomains] = await Promise.all([
-    getMostReceivedFrom(options),
-    getDomainsMostReceivedFrom(options),
-  ]);
+  try {
+    logger.trace("Fetching sender stats from Tinybird", {
+      email: options.ownerEmail,
+      period: options.period,
+      fromDate: options.fromDate,
+      toDate: options.toDate,
+    });
 
-  return {
-    mostActiveSenderEmails: mostSent.data.map((d) => ({
-      name: d.from,
-      value: d.count,
-    })),
-    mostActiveSenderDomains: mostSentDomains.data.map((d) => ({
-      name: d.from,
-      value: d.count,
-    })),
-  };
+    const [mostSent, mostSentDomains] = await Promise.all([
+      getMostReceivedFrom(options),
+      getDomainsMostReceivedFrom(options),
+    ]);
+
+    logger.trace("Sender stats fetched successfully", {
+      email: options.ownerEmail,
+      emailCount: mostSent.data.length,
+      domainCount: mostSentDomains.data.length,
+    });
+
+    return {
+      mostActiveSenderEmails: mostSent.data.map((d) => ({
+        name: d.from,
+        value: d.count,
+      })),
+      mostActiveSenderDomains: mostSentDomains.data.map((d) => ({
+        name: d.from,
+        value: d.count,
+      })),
+    };
+  } catch (error) {
+    logger.error("Error fetching sender stats from Tinybird", {
+      email: options.ownerEmail,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      period: options.period,
+      fromDate: options.fromDate,
+      toDate: options.toDate,
+    });
+    throw error;
+  }
 }
 
-export const GET = withError(async (request) => {
-  const session = await auth();
-  if (!session?.user.email)
-    return NextResponse.json({ error: "Not authenticated" });
+export const GET = withError(async (request: Request) => {
+  try {
+    const session = await auth();
+    const email = session?.user?.email;
 
-  const { searchParams } = new URL(request.url);
-  const query = senderStatsQuery.parse({
-    period: searchParams.get("period") || "week",
-    fromDate: searchParams.get("fromDate"),
-    toDate: searchParams.get("toDate"),
-  });
+    if (!email) {
+      logger.warn("Unauthorized attempt to access sender stats");
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
 
-  const result = await getSendersTinybird({
-    ...query,
-    ownerEmail: session.user.email,
-  });
+    logger.trace("Processing sender stats request", { email });
 
-  return NextResponse.json(result);
+    try {
+      const { searchParams } = new URL(request.url);
+      const query = senderStatsQuery.parse({
+        period: searchParams.get("period") || "week",
+        fromDate: searchParams.get("fromDate"),
+        toDate: searchParams.get("toDate"),
+      });
+
+      logger.trace("Query parameters parsed", {
+        email,
+        period: query.period,
+        fromDate: query.fromDate,
+        toDate: query.toDate,
+      });
+
+      const result = await getSendersTinybird({
+        ...query,
+        ownerEmail: email,
+      });
+
+      return NextResponse.json(result);
+    } catch (error) {
+      // Handle validation errors
+      if (error instanceof z.ZodError) {
+        logger.warn("Invalid query parameters for sender stats", {
+          email,
+          error: error.errors,
+        });
+        return NextResponse.json(
+          { error: "Invalid query parameters", details: error.errors },
+          { status: 400 },
+        );
+      }
+
+      throw error; // Let the outer catch or withError middleware handle it
+    }
+  } catch (error) {
+    logger.error("Unhandled error in sender stats endpoint", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+
+    throw error; // Let the withError middleware handle the response
+  }
 });

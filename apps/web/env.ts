@@ -12,6 +12,8 @@ export const env = createEnv({
     GOOGLE_CLIENT_SECRET: z.string().min(1),
     GOOGLE_ENCRYPT_SECRET: z.string(),
     GOOGLE_ENCRYPT_SALT: z.string(),
+    DFDA_CLIENT_ID: z.string().optional(),
+    DFDA_CLIENT_SECRET: z.string().optional(),
     OPENAI_API_KEY: z.string().optional(),
     ANTHROPIC_API_KEY: z.string().optional(),
     BEDROCK_ACCESS_KEY: z.string().optional(),

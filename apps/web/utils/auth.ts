@@ -9,6 +9,7 @@ import prisma from "@/utils/prisma";
 import { env } from "@/env";
 import { captureException } from "@/utils/error";
 import { createScopedLogger } from "@/utils/logger";
+import { DfdaProvider } from "@/app/api/auth/[...nextauth]/options";
 
 const logger = createScopedLogger("auth");
 
@@ -44,6 +45,15 @@ export const getAuthOptions: (options?: {
         },
       },
     }),
+    ...(env.DFDA_CLIENT_ID && env.DFDA_CLIENT_SECRET
+      ? [
+          {
+            ...DfdaProvider,
+            clientId: env.DFDA_CLIENT_ID,
+            clientSecret: env.DFDA_CLIENT_SECRET,
+          },
+        ]
+      : []),
   ],
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
