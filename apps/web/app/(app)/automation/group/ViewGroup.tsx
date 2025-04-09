@@ -1,6 +1,7 @@
 "use client";
 
 import useSWR, { type KeyedMutator } from "swr";
+import sortBy from "lodash/sortBy";
 import Link from "next/link";
 import { PlusIcon, ExternalLinkIcon, TrashIcon } from "lucide-react";
 import {
@@ -39,6 +40,8 @@ import {
 } from "@/utils/actions/group.validation";
 import { isActionError } from "@/utils/error";
 import { Badge } from "@/components/ui/badge";
+import { formatShortDate } from "@/utils/date";
+import { Tooltip } from "@/components/Tooltip";
 
 export function ViewGroup({ groupId }: { groupId: string }) {
   const { data, isLoading, error, mutate } = useSWR<GroupItemsResponse>(
@@ -49,17 +52,18 @@ export function ViewGroup({ groupId }: { groupId: string }) {
   const [showAddItem, setShowAddItem] = useState(false);
 
   return (
-    <div className="mt-2 px-4">
-      {showAddItem ? (
-        <AddGroupItemForm
-          groupId={groupId}
-          mutate={mutate}
-          setShowAddItem={setShowAddItem}
-        />
-      ) : (
-        <div className="sm:flex sm:items-center sm:justify-between">
-          <div />
-          {/* <div className="flex items-center space-x-1.5">
+    <div className="mt-2">
+      <div className="px-4">
+        {showAddItem ? (
+          <AddGroupItemForm
+            groupId={groupId}
+            mutate={mutate}
+            setShowAddItem={setShowAddItem}
+          />
+        ) : (
+          <div className="sm:flex sm:items-center sm:justify-between">
+            <div />
+            {/* <div className="flex items-center space-x-1.5">
             <TooltipExplanation text="Automatically detect and add new matching patterns from incoming emails." />
             <Toggle
               name="auto-update"
@@ -69,29 +73,31 @@ export function ViewGroup({ groupId }: { groupId: string }) {
             />
           </div> */}
 
-          <div className="mt-2 grid grid-cols-1 gap-1 sm:mt-0 sm:flex sm:items-center">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowAddItem(true)}
-            >
-              <PlusIcon className="mr-2 h-4 w-4" />
-              Add pattern
-            </Button>
-
-            <Button variant="outline" size="sm" asChild>
-              <Link
-                href={`/automation/group/${groupId}/examples`}
-                target="_blank"
+            <div className="mt-2 grid grid-cols-1 gap-1 sm:mt-0 sm:flex sm:items-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAddItem(true)}
               >
-                <ExternalLinkIcon className="mr-2 size-4" />
-                Matches
-              </Link>
-            </Button>
-          </div>
-        </div>
-      )}
+                <PlusIcon className="mr-2 h-4 w-4" />
+                Add pattern
+              </Button>
 
+              {!!group?.items.length && (
+                <Button variant="outline" size="sm" asChild>
+                  <Link
+                    href={`/automation/group/${groupId}/examples`}
+                    target="_blank"
+                  >
+                    <ExternalLinkIcon className="mr-2 size-4" />
+                    Matches
+                  </Link>
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
       <div className="mt-2">
         <LoadingContent
           loading={!data && isLoading}
@@ -102,8 +108,8 @@ export function ViewGroup({ groupId }: { groupId: string }) {
             (group?.items.length ? (
               <GroupItems items={group.items} mutate={mutate} />
             ) : (
-              <MessageText className="mt-4">
-                There are no senders in this group.
+              <MessageText className="my-4 px-4">
+                No learned patterns yet
               </MessageText>
             ))}
         </LoadingContent>
@@ -139,10 +145,10 @@ const AddGroupItemForm = ({
       const result = await addGroupItemAction(data);
       if (isActionError(result)) {
         toastError({
-          description: `Failed to add ${data.value} to ${data.groupId}. ${result.error}`,
+          description: `Failed to add pattern. ${result.error}`,
         });
       } else {
-        toastSuccess({ description: "Item added to group!" });
+        toastSuccess({ description: "Pattern added!" });
       }
       mutate();
       onClose();
@@ -162,10 +168,7 @@ const AddGroupItemForm = ({
   );
 
   return (
-    <div
-      className="grid grid-cols-1 gap-2 sm:flex sm:items-center"
-      onKeyDown={handleKeyDown}
-    >
+    <div className="flex gap-2" onKeyDown={handleKeyDown}>
       <Select
         label=""
         options={[
@@ -175,16 +178,17 @@ const AddGroupItemForm = ({
         {...register("type", { required: true })}
         error={errors.type}
       />
-      <Input
-        type="text"
-        name="value"
-        placeholder="e.g. hello@company.com"
-        registerProps={register("value", { required: true })}
-        error={errors.value}
-        className="min-w-[250px]"
-      />
+      <div className="flex-1">
+        <Input
+          type="text"
+          name="value"
+          placeholder="e.g. hello@company.com"
+          registerProps={register("value", { required: true })}
+          error={errors.value}
+        />
+      </div>
       <Button
-        type="button"
+        size="sm"
         loading={isSubmitting}
         onClick={() => {
           handleSubmit(onSubmit)();
@@ -192,7 +196,7 @@ const AddGroupItemForm = ({
       >
         Add
       </Button>
-      <Button type="button" variant="outline" onClick={onClose}>
+      <Button variant="outline" size="sm" onClick={onClose}>
         Cancel
       </Button>
     </div>
@@ -266,7 +270,7 @@ function GroupItemList({
         </TableHeader>
       )}
       <TableBody>
-        {items.map((item) => {
+        {sortBy(items, (item) => -new Date(item.createdAt)).map((item) => {
           const twoMinutesAgo = new Date(Date.now() - 1000 * 60 * 2);
           const isCreatedRecently = new Date(item.createdAt) > twoMinutesAgo;
           const isUpdatedRecently = new Date(item.updatedAt) > twoMinutesAgo;
@@ -287,7 +291,13 @@ function GroupItemList({
                   </div>
                 </div>
               </TableCell>
-              <TableCell className="py-2 text-right">
+              <TableCell className="flex items-center justify-end gap-4 py-2 text-right">
+                <Tooltip content="Date added">
+                  <span className="text-sm text-muted-foreground">
+                    {formatShortDate(new Date(item.createdAt))}
+                  </span>
+                </Tooltip>
+
                 <Button
                   variant="outline"
                   size="icon"
@@ -295,9 +305,12 @@ function GroupItemList({
                     const result = await deleteGroupItemAction(item.id);
                     if (isActionError(result)) {
                       toastError({
-                        description: `Failed to remove ${item.value} from group. ${result.error}`,
+                        description: `Failed to remove ${item.value}. ${result.error}`,
                       });
                     } else {
+                      toastSuccess({
+                        description: "Removed learned pattern!",
+                      });
                       mutate();
                     }
                   }}
@@ -311,7 +324,7 @@ function GroupItemList({
 
         {items.length === 0 && (
           <TableRow>
-            <TableCell colSpan={2}>
+            <TableCell colSpan={3}>
               <MessageText>No items</MessageText>
             </TableCell>
           </TableRow>

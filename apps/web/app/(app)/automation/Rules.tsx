@@ -50,6 +50,7 @@ import { Tooltip } from "@/components/Tooltip";
 import { cn } from "@/utils";
 import { type RiskLevel, getRiskLevel } from "@/utils/risk";
 import { useRules } from "@/hooks/useRules";
+import { ActionType } from "@prisma/client";
 
 export function Rules() {
   const { data, isLoading, error, mutate } = useRules();
@@ -102,16 +103,7 @@ export function Rules() {
                               Disabled
                             </Badge>
                           )}
-                          {rule.trackReplies ? (
-                            <Tooltip content="This is the rule used by Reply Zero">
-                              <Badge color="blue" className="mr-2">
-                                {rule.name}
-                                <InfoIcon className="ml-1 size-3" />
-                              </Badge>
-                            </Tooltip>
-                          ) : (
-                            rule.name
-                          )}
+                          {rule.name}
                         </Link>
 
                         {!rule.enabled && (
@@ -225,6 +217,32 @@ export function Rules() {
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={async () => {
+                                const result = await setRuleEnabledAction({
+                                  ruleId: rule.id,
+                                  enabled: !rule.enabled,
+                                });
+
+                                if (isActionError(result)) {
+                                  toastError({
+                                    description: `There was an error ${
+                                      rule.enabled ? "disabling" : "enabling"
+                                    } your rule. ${result.error}`,
+                                  });
+                                } else {
+                                  toastSuccess({
+                                    description: `Rule ${
+                                      rule.enabled ? "disabled" : "enabled"
+                                    }!`,
+                                  });
+                                }
+
+                                mutate();
+                              }}
+                            >
+                              {rule.enabled ? "Disable" : "Enable"}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={async () => {
                                 const yes = confirm(
                                   "Are you sure you want to delete this rule?",
                                 );
@@ -281,7 +299,10 @@ export function Rules() {
 function Actions({ actions }: { actions: RulesResponse[number]["actions"] }) {
   return (
     <div className="flex flex-1 space-x-2">
-      {actions?.map((action) => {
+      {actions.map((action) => {
+        // Hidden for simplicity
+        if (action.type === ActionType.TRACK_THREAD) return null;
+
         return (
           <Badge
             key={action.id}

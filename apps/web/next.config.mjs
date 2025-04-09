@@ -15,10 +15,8 @@ const withMDX = nextMdx();
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
+  serverExternalPackages: ["@sentry/nextjs", "@sentry/node"],
   experimental: {
-    serverComponentsExternalPackages: ["@sentry/nextjs", "@sentry/node"],
-    instrumentationHook: true,
     turbo: {
       rules: {
         "*.svg": {
@@ -47,6 +45,10 @@ const nextConfig = {
         protocol: "https",
         hostname: "cdn.sanity.io",
       },
+      {
+        protocol: "https",
+        hostname: "images.getinboxzero.com",
+      },
     ],
   },
   async redirects() {
@@ -64,7 +66,7 @@ const nextConfig = {
       },
       {
         source: "/",
-        destination: "/automation",
+        destination: "/setup",
         has: [
           {
             type: "cookie",
@@ -75,7 +77,7 @@ const nextConfig = {
       },
       {
         source: "/",
-        destination: "/automation",
+        destination: "/setup",
         has: [
           {
             type: "cookie",
@@ -86,7 +88,7 @@ const nextConfig = {
       },
       {
         source: "/",
-        destination: "/automation",
+        destination: "/setup",
         has: [
           {
             type: "cookie",
@@ -160,6 +162,11 @@ const nextConfig = {
         destination: "/reply-zero",
         permanent: false,
       },
+      {
+        source: "/game",
+        destination: "https://email-blaster.vercel.app/",
+        permanent: false,
+      },
     ];
   },
   async rewrites() {
@@ -211,7 +218,7 @@ const nextConfig = {
               // If you use web workers or service workers
               "worker-src 'self' blob:",
               // For API calls, SWR, external services
-              "connect-src 'self' https:",
+              "connect-src 'self' https: wss:",
               // iframes
               "frame-src 'self' https:",
               // Prevent embedding in iframes
@@ -258,7 +265,7 @@ const sentryOptions = {
   // https://github.com/getsentry/sentry-webpack-plugin#options
 
   // Suppresses source map uploading logs during build
-  silent: true,
+  silent: !process.env.CI,
   org: process.env.SENTRY_ORGANIZATION,
   project: process.env.SENTRY_PROJECT,
 };
@@ -303,6 +310,7 @@ const exportConfig = useSentry
 const withSerwist = withSerwistInit({
   swSrc: "app/sw.ts",
   swDest: "public/sw.js",
+  disable: env.NODE_ENV !== "production",
 });
 
 export default withAxiom(withSerwist(exportConfig));

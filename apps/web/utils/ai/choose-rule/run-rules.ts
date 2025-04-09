@@ -1,4 +1,5 @@
 import type { gmail_v1 } from "@googleapis/gmail";
+import { after } from "next/server";
 import type {
   ParsedMessage,
   RuleWithActionsAndCategories,
@@ -12,13 +13,14 @@ import {
 } from "@prisma/client";
 import type { ActionItem } from "@/utils/ai/types";
 import { findMatchingRule } from "@/utils/ai/choose-rule/match-rules";
-import { getActionItemsWithAiArgs } from "@/utils/ai/choose-rule/ai-choose-args";
+import { getActionItemsWithAiArgs } from "@/utils/ai/choose-rule/choose-args";
 import { executeAct } from "@/utils/ai/choose-rule/execute";
-import { getEmailForLLM } from "@/utils/get-email-from-message";
 import prisma from "@/utils/prisma";
 import { createScopedLogger } from "@/utils/logger";
 import type { MatchReason } from "@/utils/ai/choose-rule/types";
 import { sanitizeActionFields } from "@/utils/action-item";
+import { extractEmailAddress } from "@/utils/email";
+import { analyzeSenderPattern } from "@/app/api/ai/analyze-sender-pattern/call-analyze-pattern-api";
 
 const logger = createScopedLogger("ai-run-rules");
 
@@ -30,7 +32,7 @@ export type RunRulesResult = {
   existing?: boolean;
 };
 
-export async function runRulesOnMessage({
+export async function runRules({
   gmail,
   message,
   rules,
@@ -45,10 +47,12 @@ export async function runRulesOnMessage({
 }): Promise<RunRulesResult> {
   const result = await findMatchingRule(rules, message, user);
 
+  analyzeSenderPatternIfAiMatch(isTest, result, message, user);
+
   logger.trace("Matching rule", { result });
 
   if (result.rule) {
-    return await runRule(
+    return await executeMatchedRule(
       result.rule,
       message,
       user,
@@ -68,7 +72,7 @@ export async function runRulesOnMessage({
   return result;
 }
 
-async function runRule(
+async function executeMatchedRule(
   rule: RuleWithActionsAndCategories,
   message: ParsedMessage,
   user: Pick<User, "id" | "email" | "about"> & UserAIFields,
@@ -77,13 +81,12 @@ async function runRule(
   matchReasons: MatchReason[] | undefined,
   isTest: boolean,
 ) {
-  const email = getEmailForLLM(message);
-
   // get action items with args
   const actionItems = await getActionItemsWithAiArgs({
-    email,
+    message,
     user,
     selectedRule: rule,
+    gmail,
   });
 
   // handle action
@@ -110,7 +113,6 @@ async function runRule(
       userEmail: user.email || "",
       executedRule,
       message,
-      isReplyTrackingRule: rule.trackReplies || false,
     });
   }
 
@@ -238,5 +240,35 @@ async function upsertExecutedRule({
     }
     // Re-throw any other errors
     throw error;
+  }
+}
+
+async function analyzeSenderPatternIfAiMatch(
+  isTest: boolean,
+  result: { rule?: Rule | null; matchReasons?: MatchReason[] },
+  message: ParsedMessage,
+  user: Pick<User, "id">,
+) {
+  if (
+    !isTest &&
+    result.rule &&
+    // skip if we already matched for static reasons
+    // learnings only needed for rules that would run through an ai
+    !result.matchReasons?.some(
+      (reason) =>
+        reason.type === "STATIC" ||
+        reason.type === "GROUP" ||
+        reason.type === "CATEGORY",
+    )
+  ) {
+    const fromAddress = extractEmailAddress(message.headers.from);
+    if (fromAddress) {
+      after(() =>
+        analyzeSenderPattern({
+          userId: user.id,
+          from: fromAddress,
+        }),
+      );
+    }
   }
 }

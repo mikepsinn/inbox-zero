@@ -12,8 +12,17 @@ export const env = createEnv({
     GOOGLE_CLIENT_SECRET: z.string().min(1),
     GOOGLE_ENCRYPT_SECRET: z.string(),
     GOOGLE_ENCRYPT_SALT: z.string(),
-    DFDA_CLIENT_ID: z.string().optional(),
-    DFDA_CLIENT_SECRET: z.string().optional(),
+    DEFAULT_LLM_PROVIDER: z
+      .enum([
+        "anthropic",
+        "google",
+        "openai",
+        "bedrock",
+        "openrouter",
+        "groq",
+        "ollama",
+      ])
+      .default("bedrock"),
     OPENAI_API_KEY: z.string().optional(),
     ANTHROPIC_API_KEY: z.string().optional(),
     BEDROCK_ACCESS_KEY: z.string().optional(),
@@ -24,6 +33,7 @@ export const env = createEnv({
     OPENROUTER_API_KEY: z.string().optional(),
     UPSTASH_REDIS_URL: z.string().optional(),
     UPSTASH_REDIS_TOKEN: z.string().optional(),
+    REDIS_URL: z.string().optional(), // used for subscriptions
     OLLAMA_BASE_URL: z.string().optional(),
     QSTASH_TOKEN: z.string().optional(),
     QSTASH_CURRENT_SIGNING_KEY: z.string().optional(),
@@ -54,12 +64,27 @@ export const env = createEnv({
       .optional()
       .transform((value) => value?.split(",")),
     WEBHOOK_URL: z.string().optional(),
-    INTERNAL_API_KEY: z.string().optional(),
+    INTERNAL_API_KEY: z.string(),
     WHITELIST_FROM: z.string().optional(),
     USE_BACKUP_MODEL: z.coerce.boolean().optional().default(false),
-    // See Vercel limits here: https://vercel.com/docs/functions/configuring-functions/duration#duration-limits
-    // Vercel Fluid Compute allows up to 800s, but other plans are capped at 300s or less
-    MAX_DURATION: z.coerce.number().optional().default(800),
+
+    // Economy LLM configuration (for large context windows where cost efficiency matters)
+    ECONOMY_LLM_PROVIDER: z
+      .enum([
+        "anthropic",
+        "google",
+        "openai",
+        "bedrock",
+        "openrouter",
+        "groq",
+        "ollama",
+      ])
+      .optional()
+      .default("openrouter"),
+    ECONOMY_LLM_MODEL: z
+      .string()
+      .optional()
+      .default("google/gemini-2.0-flash-001"),
 
     // license
     LICENSE_1_SEAT_VARIANT_ID: z.coerce.number().optional(),
@@ -113,7 +138,6 @@ export const env = createEnv({
       .default("elie@getinboxzero.com"),
     NEXT_PUBLIC_GTM_ID: z.string().optional(),
     NEXT_PUBLIC_CRISP_WEBSITE_ID: z.string().optional(),
-    NEXT_PUBLIC_DISABLE_TINYBIRD: z.coerce.boolean().optional().default(false),
     NEXT_PUBLIC_WELCOME_UPGRADE_ENABLED: z.coerce
       .boolean()
       .optional()
@@ -127,7 +151,7 @@ export const env = createEnv({
       .string()
       .default("us.anthropic.claude-3-5-sonnet-20241022-v2:0"),
     NEXT_PUBLIC_OLLAMA_MODEL: z.string().optional(),
-    NEXT_PUBLIC_APP_HOME_PATH: z.string().default("/automation"),
+    NEXT_PUBLIC_APP_HOME_PATH: z.string().default("/setup"),
   },
   // For Next.js >= 13.4.4, you only need to destructure client variables:
   experimental__runtimeEnv: {
@@ -189,7 +213,6 @@ export const env = createEnv({
     NEXT_PUBLIC_SUPPORT_EMAIL: process.env.NEXT_PUBLIC_SUPPORT_EMAIL,
     NEXT_PUBLIC_GTM_ID: process.env.NEXT_PUBLIC_GTM_ID,
     NEXT_PUBLIC_CRISP_WEBSITE_ID: process.env.NEXT_PUBLIC_CRISP_WEBSITE_ID,
-    NEXT_PUBLIC_DISABLE_TINYBIRD: process.env.NEXT_PUBLIC_DISABLE_TINYBIRD,
     NEXT_PUBLIC_WELCOME_UPGRADE_ENABLED:
       process.env.NEXT_PUBLIC_WELCOME_UPGRADE_ENABLED,
     NEXT_PUBLIC_AXIOM_DATASET: process.env.NEXT_PUBLIC_AXIOM_DATASET,

@@ -16,6 +16,7 @@ import {
   InboxIcon,
   LogOutIcon,
   RibbonIcon,
+  TagIcon,
 } from "lucide-react";
 import { Button } from "@/components/Button";
 import { logOut } from "@/utils/user";
@@ -23,20 +24,16 @@ import { cn } from "@/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const userNavigation = [
-  // ...(env.NEXT_PUBLIC_DISABLE_TINYBIRD
-  //   ? []
-  //   : [
-  //       {
-  //         name: "New Senders",
-  //         href: "/new-senders",
-  //         icon: Users2Icon,
-  //       },
-  //     ]),
   { name: "Usage", href: "/usage", icon: BarChartIcon },
   {
     name: "Mail (Beta)",
     href: "/mail",
     icon: InboxIcon,
+  },
+  {
+    name: "Sender Categories",
+    href: "/smart-categories",
+    icon: TagIcon,
   },
   {
     name: "Early Access",
@@ -83,9 +80,7 @@ function ProfileDropdown() {
               src={session.user.image}
               alt="Profile"
             />
-          ) : (
-            <div className="h-8 w-8 rounded-full bg-primary" />
-          )}
+          ) : null}
           <span className="hidden lg:flex lg:items-center">
             <span
               className="ml-4 text-sm font-semibold leading-6 text-foreground"

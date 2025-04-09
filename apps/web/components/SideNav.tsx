@@ -9,6 +9,7 @@ import {
   ArrowLeftIcon,
   BarChartBigIcon,
   BookIcon,
+  BrushIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   CogIcon,
@@ -30,7 +31,6 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { useComposeModal } from "@/providers/ComposeModalProvider";
-import { env } from "@/env";
 import {
   Sidebar,
   SidebarContent,
@@ -48,6 +48,8 @@ import { SideNavMenu } from "@/components/SideNavMenu";
 import { CommandShortcut } from "@/components/ui/command";
 import { useSplitLabels } from "@/hooks/useLabels";
 import { LoadingContent } from "@/components/LoadingContent";
+import { useCleanerEnabled } from "@/hooks/useFeatureFlags";
+import { ClientOnly } from "@/components/ClientOnly";
 
 type NavItem = {
   name: string;
@@ -58,11 +60,10 @@ type NavItem = {
   hideInMail?: boolean;
 };
 
-const NEXT_PUBLIC_DISABLE_TINYBIRD = env.NEXT_PUBLIC_DISABLE_TINYBIRD;
-
-const navigationItems: NavItem[] = [
+// Assistant category items
+const assistantItems: NavItem[] = [
   {
-    name: "AI Personal Assistant",
+    name: "Personal Assistant",
     href: "/automation",
     icon: SparklesIcon,
   },
@@ -71,50 +72,49 @@ const navigationItems: NavItem[] = [
     href: "/reply-zero",
     icon: MessageCircleReplyIcon,
   },
-  ...(NEXT_PUBLIC_DISABLE_TINYBIRD
-    ? []
-    : [
-        {
-          name: "Bulk Unsubscribe",
-          href: "/bulk-unsubscribe",
-          icon: MailsIcon,
-        },
-      ]),
   {
     name: "Cold Email Blocker",
     href: "/cold-email-blocker",
     icon: ShieldCheckIcon,
   },
-  ...(NEXT_PUBLIC_DISABLE_TINYBIRD
-    ? []
-    : [
-        {
-          name: "Smart Categories",
-          href: "/smart-categories",
-          icon: TagIcon,
-        },
-        {
-          name: "Analytics",
-          href: "/stats",
-          icon: BarChartBigIcon,
-        },
-      ]),
+];
+
+// Clean category items
+const cleanItems: NavItem[] = [
+  {
+    name: "Bulk Unsubscribe",
+    href: "/bulk-unsubscribe",
+    icon: MailsIcon,
+  },
+  {
+    name: "Deep Clean",
+    href: "/clean",
+    icon: BrushIcon,
+  },
+  {
+    name: "Analytics",
+    href: "/stats",
+    icon: BarChartBigIcon,
+  },
 ];
 
 export const useNavigation = () => {
   // When we have features in early access, we can filter the navigation items
-  // const showReplyTracker = useReplyTrackingEnabled();
+  const showCleaner = useCleanerEnabled();
 
-  // const navItems = useMemo(
-  //   () =>
-  //     navigationItems.filter((item) => {
-  //       if (item.href === "/reply-zero") return showReplyTracker;
-  //       return true;
-  //     }),
-  //   [showReplyTracker],
-  // );
+  const cleanItemsFiltered = useMemo(
+    () =>
+      cleanItems.filter((item) => {
+        if (item.href === "/clean") return showCleaner;
+        return true;
+      }),
+    [showCleaner],
+  );
 
-  return navigationItems;
+  return {
+    assistantItems,
+    cleanItems: cleanItemsFiltered,
+  };
 };
 
 const bottomLinks: NavItem[] = [
@@ -129,6 +129,27 @@ const bottomLinks: NavItem[] = [
     href: "https://docs.getinboxzero.com",
     target: "_blank",
     icon: BookIcon,
+  },
+  {
+    name: "Follow on X",
+    href: "/twitter",
+    target: "_blank",
+    icon: (props: any) => (
+      <svg
+        width="100"
+        height="100"
+        viewBox="0 0 24 24"
+        {...props}
+        aria-label="X"
+      >
+        <title>X</title>
+        <path
+          fill="currentColor"
+          d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"
+        />
+      </svg>
+    ),
+    hideInMail: true,
   },
   {
     name: "Join Discord",
@@ -233,7 +254,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     <Sidebar collapsible="icon" {...props}>
       {state === "expanded" ? (
         <SidebarHeader>
-          <Link href={env.NEXT_PUBLIC_APP_HOME_PATH}>
+          <Link href="/setup">
             <div className="flex h-12 items-center p-4 text-white">
               <Logo className="h-4" />
             </div>
@@ -246,9 +267,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           {showMailNav ? (
             <MailNav path={path} />
           ) : (
-            <SidebarGroup>
-              <SideNavMenu items={navigation} activeHref={path} />
-            </SidebarGroup>
+            <>
+              <SidebarGroup>
+                <SidebarGroupLabel>Assistant</SidebarGroupLabel>
+                <SideNavMenu
+                  items={navigation.assistantItems}
+                  activeHref={path}
+                />
+              </SidebarGroup>
+              <SidebarGroup>
+                <SidebarGroupLabel>Clean</SidebarGroupLabel>
+                <ClientOnly>
+                  <SideNavMenu
+                    items={navigation.cleanItems}
+                    activeHref={path}
+                  />
+                </ClientOnly>
+              </SidebarGroup>
+            </>
           )}
         </SidebarGroupContent>
       </SidebarContent>

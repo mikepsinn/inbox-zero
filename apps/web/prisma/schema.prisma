@@ -75,6 +75,7 @@ model User {
   coldEmailPrompt       String?
   rulesPrompt           String?
   webhookSecret         String?
+  outboundReplyTracking Boolean           @default(false)
 
   // categorization
   autoCategorizeSenders Boolean @default(false)
@@ -96,6 +97,10 @@ model User {
   categories        Category[]
   threadTrackers    ThreadTracker[]
   unsubscribeTokens EmailToken[]
+  cleanupJobs       CleanupJob[]
+  cleanupThreads    CleanupThread[]
+  emailMessages     EmailMessage[]
+  knowledges        Knowledge[]
 
   @@index([lastSummaryEmailAt])
 }
@@ -181,10 +186,9 @@ model Rule {
   executedRules ExecutedRule[]
 
   // reply tracking fields
-  trackReplies             Boolean? // If this is the reply tracking rule. Using partial unique index (created manually)
-  draftReplies             Boolean?
-  draftRepliesInstructions String?
-  threadTrackers           ThreadTracker[]
+  trackReplies             Boolean? // deprecated - If this is the reply tracking rule. Using partial unique index (created manually)
+  draftReplies             Boolean? // deprecated
+  draftRepliesInstructions String? // deprecated
 
   // conditions: ai, group, static, category
   type                RuleType? // deprecated
@@ -330,6 +334,10 @@ model Newsletter {
   email     String
   status    NewsletterStatus?
 
+  // For learned patterns for rules
+  patternAnalyzed Boolean   @default(false)
+  lastAnalyzedAt  DateTime?
+
   userId     String
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   categoryId String?
@@ -357,6 +365,31 @@ model ColdEmail {
   @@index([userId, createdAt])
 }
 
+model EmailMessage {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  threadId        String
+  messageId       String
+  date            DateTime // date of the email
+  from            String
+  fromDomain      String
+  to              String
+  unsubscribeLink String?
+  read            Boolean
+  sent            Boolean
+  draft           Boolean
+  inbox           Boolean
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, threadId, messageId])
+  @@index([userId, threadId])
+  @@index([userId, date])
+  @@index([userId, from])
+}
+
 model ThreadTracker {
   id        String            @id @default(cuid())
   createdAt DateTime          @default(now())
@@ -367,9 +400,6 @@ model ThreadTracker {
   resolved  Boolean           @default(false)
   type      ThreadTrackerType
 
-  ruleId String?
-  rule   Rule?   @relation(fields: [ruleId], references: [id], onDelete: Cascade)
-
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -377,6 +407,50 @@ model ThreadTracker {
   @@index([userId, resolved])
   @@index([userId, resolved, sentAt, type])
   @@index([userId, type, resolved, sentAt])
+}
+
+model CleanupJob {
+  id               String          @id @default(cuid())
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  action           CleanAction     @default(ARCHIVE)
+  daysOld          Int             @default(7)
+  instructions     String?
+  skipReply        Boolean?
+  skipStarred      Boolean?
+  skipCalendar     Boolean?
+  skipReceipt      Boolean?
+  skipAttachment   Boolean?
+  skipConversation Boolean?
+  userId           String
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  threads          CleanupThread[]
+}
+
+model CleanupThread {
+  id        String     @id @default(cuid())
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  threadId  String
+  archived  Boolean // this can also mean "mark as read". depends on CleanupJob.action
+  // labelIds  String[]
+  jobId     String
+  job       CleanupJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Knowledge {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  title     String
+  content   String
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, title])
 }
 
 model ApiKey {
@@ -444,6 +518,7 @@ enum ActionType {
   MARK_SPAM
   CALL_WEBHOOK
   MARK_READ
+  TRACK_THREAD
   // SUMMARIZE
   // SNOOZE
   // ADD_TO_DO
@@ -534,4 +609,9 @@ enum ThreadTrackerType {
 
 enum ProcessorType {
   LEMON_SQUEEZY
+}
+
+enum CleanAction {
+  ARCHIVE
+  MARK_READ
 }

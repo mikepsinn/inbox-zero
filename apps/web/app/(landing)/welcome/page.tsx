@@ -7,7 +7,6 @@ import { SquaresPattern } from "@/app/(landing)/home/SquaresPattern";
 import { env } from "@/env";
 import prisma from "@/utils/prisma";
 import { PageHeading, TypographyP } from "@/components/Typography";
-import { LoadStats } from "@/providers/StatLoaderProvider";
 import { UTMs } from "@/app/(landing)/welcome/utms";
 import { SignUpEvent } from "@/app/(landing)/welcome/sign-up-event";
 import { CardBasic } from "@/components/ui/card";
@@ -18,11 +17,10 @@ export const metadata: Metadata = {
   alternates: { canonical: "/welcome" },
 };
 
-export default async function WelcomePage({
-  searchParams,
-}: {
-  searchParams: { question?: string; force?: boolean };
+export default async function WelcomePage(props: {
+  searchParams: Promise<{ question?: string; force?: boolean }>;
 }) {
+  const searchParams = await props.searchParams;
   const session = await auth();
 
   if (!session?.user.email) redirect("/login");
@@ -58,7 +56,6 @@ export default async function WelcomePage({
           </div>
         </div>
       </CardBasic>
-      <LoadStats loadBefore showToast={false} />
       {!user.utms && (
         <Suspense>
           <UTMs userId={session.user.id} />

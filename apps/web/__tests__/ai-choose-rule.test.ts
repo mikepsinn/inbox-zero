@@ -9,7 +9,7 @@ const isAiTest = process.env.RUN_AI_TESTS === "true";
 
 vi.mock("server-only", () => ({}));
 
-describe.skipIf(!isAiTest)("aiChooseRule", () => {
+describe.runIf(isAiTest)("aiChooseRule", () => {
   test("Should return no rule when no rules passed", async () => {
     const result = await aiChooseRule({
       rules: [],
@@ -354,6 +354,7 @@ function getEmail({
   content = "content",
 }: { from?: string; subject?: string; content?: string } = {}) {
   return {
+    id: "id",
     from,
     subject,
     content,

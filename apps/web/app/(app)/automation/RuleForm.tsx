@@ -8,13 +8,20 @@ import {
   type SubmitHandler,
   useFieldArray,
   useForm,
+  type UseFormRegister,
+  type UseFormSetValue,
 } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import TextareaAutosize from "react-textarea-autosize";
 import { capitalCase } from "capital-case";
 import { usePostHog } from "posthog-js/react";
-import { ExternalLinkIcon, PlusIcon, FilterIcon } from "lucide-react";
+import {
+  ExternalLinkIcon,
+  PlusIcon,
+  FilterIcon,
+  BrainIcon,
+} from "lucide-react";
 import { CardBasic } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ErrorMessage, Input, Label } from "@/components/Input";
@@ -55,10 +62,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { LearnedPatterns } from "@/app/(app)/automation/group/LearnedPatterns";
-import {
-  AWAITING_REPLY_LABEL_NAME,
-  NEEDS_REPLY_LABEL_NAME,
-} from "@/utils/reply-tracker/consts";
+import { Tooltip } from "@/components/Tooltip";
+import { createGroupAction } from "@/utils/actions/group";
 
 export function RuleForm({ rule }: { rule: CreateRuleBody & { id?: string } }) {
   const {
@@ -71,7 +76,20 @@ export function RuleForm({ rule }: { rule: CreateRuleBody & { id?: string } }) {
     trigger,
   } = useForm<CreateRuleBody>({
     resolver: zodResolver(createRuleBody),
-    defaultValues: rule,
+    defaultValues: rule
+      ? {
+          ...rule,
+          actions: [
+            ...rule.actions.map((action) => ({
+              ...action,
+              content: {
+                ...action.content,
+                setManually: !!action.content?.value,
+              },
+            })),
+          ],
+        }
+      : undefined,
   });
 
   const {
@@ -104,6 +122,15 @@ export function RuleForm({ rule }: { rule: CreateRuleBody & { id?: string } }) {
           );
           if (!hasLabel && action.label?.value && !action.label?.ai) {
             await createLabelAction({ name: action.label.value });
+          }
+        }
+      }
+
+      // set content to empty string if it's not set manually
+      for (const action of data.actions) {
+        if (action.type === ActionType.DRAFT_EMAIL) {
+          if (!action.content?.setManually) {
+            action.content = { value: "", ai: false };
           }
         }
       }
@@ -192,8 +219,13 @@ export function RuleForm({ rule }: { rule: CreateRuleBody & { id?: string } }) {
       { label: "Mark read", value: ActionType.MARK_READ },
       { label: "Mark spam", value: ActionType.MARK_SPAM },
       { label: "Call webhook", value: ActionType.CALL_WEBHOOK },
+      { label: "Track thread", value: ActionType.TRACK_THREAD },
     ];
   }, []);
+
+  const [learnedPatternGroupId, setLearnedPatternGroupId] = useState(
+    rule.groupId,
+  );
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
@@ -225,34 +257,63 @@ export function RuleForm({ rule }: { rule: CreateRuleBody & { id?: string } }) {
 
       <div className="mt-6 flex items-end justify-between">
         <TypographyH3>Conditions</TypographyH3>
+        <div className="flex items-center gap-1.5">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <FilterIcon className="mr-2 h-4 w-4" />
+                Match{" "}
+                {!conditionalOperator ||
+                conditionalOperator === LogicalOperator.AND
+                  ? "all"
+                  : "any"}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuRadioGroup
+                value={conditionalOperator}
+                onValueChange={(value) =>
+                  setValue("conditionalOperator", value as LogicalOperator)
+                }
+              >
+                <DropdownMenuRadioItem value={LogicalOperator.AND}>
+                  Match all conditions
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value={LogicalOperator.OR}>
+                  Match any condition
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm">
-              <FilterIcon className="mr-2 h-4 w-4" />
-              Match{" "}
-              {!conditionalOperator ||
-              conditionalOperator === LogicalOperator.AND
-                ? "all"
-                : "any"}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuRadioGroup
-              value={conditionalOperator}
-              onValueChange={(value) =>
-                setValue("conditionalOperator", value as LogicalOperator)
-              }
-            >
-              <DropdownMenuRadioItem value={LogicalOperator.AND}>
-                Match all conditions
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value={LogicalOperator.OR}>
-                Match any condition
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          {!learnedPatternGroupId && !!rule.id && (
+            <Tooltip content="Show learned patterns">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9"
+                onClick={async () => {
+                  if (!rule.id) return;
+
+                  const result = await createGroupAction({ ruleId: rule.id });
+
+                  if (isActionError(result)) {
+                    toastError({ description: result.error });
+                  } else if (!result.groupId) {
+                    toastError({
+                      description:
+                        "There was an error setting up learned patterns.",
+                    });
+                  } else {
+                    setLearnedPatternGroupId(result.groupId);
+                  }
+                }}
+              >
+                <BrainIcon className="size-4" />
+              </Button>
+            </Tooltip>
+          )}
+        </div>
       </div>
 
       {errors.conditions?.root?.message && (
@@ -274,7 +335,7 @@ export function RuleForm({ rule }: { rule: CreateRuleBody & { id?: string } }) {
                   options={[
                     { label: "AI", value: RuleType.AI },
                     { label: "Static", value: RuleType.STATIC },
-                    { label: "Smart Category", value: RuleType.CATEGORY },
+                    { label: "Sender Category", value: RuleType.CATEGORY },
                   ]}
                   error={
                     errors.conditions?.[index]?.type as FieldError | undefined
@@ -463,12 +524,12 @@ export function RuleForm({ rule }: { rule: CreateRuleBody & { id?: string } }) {
                       ) : (
                         <div>
                           <SectionDescription>
-                            No smart categories found.
+                            No sender categories found.
                           </SectionDescription>
 
                           <Button asChild className="mt-1">
                             <Link href="/smart-categories" target="_blank">
-                              Set up Smart Categories
+                              Set up Sender Categories
                               <ExternalLinkIcon className="ml-1.5 size-4" />
                             </Link>
                           </Button>
@@ -507,17 +568,13 @@ export function RuleForm({ rule }: { rule: CreateRuleBody & { id?: string } }) {
         </div>
       )}
 
-      {rule.groupId && (
+      {learnedPatternGroupId && (
         <div className="mt-4">
-          <LearnedPatterns groupId={rule.groupId} />
+          <LearnedPatterns groupId={learnedPatternGroupId} />
         </div>
       )}
 
       <TypographyH3 className="mt-6">Actions</TypographyH3>
-
-      <div className="mt-4">
-        <ReplyTrackerActionSection />
-      </div>
 
       {actionErrors.length > 0 && (
         <div className="mt-4">
@@ -536,6 +593,8 @@ export function RuleForm({ rule }: { rule: CreateRuleBody & { id?: string } }) {
 
       <div className="mt-4 space-y-4">
         {watch("actions")?.map((action, i) => {
+          const fields = actionInputs[action.type].fields;
+
           return (
             <CardBasic key={i}>
               <div className="grid gap-4 sm:grid-cols-4">
@@ -558,102 +617,37 @@ export function RuleForm({ rule }: { rule: CreateRuleBody & { id?: string } }) {
                   </Button>
                 </div>
                 <div className="space-y-4 sm:col-span-3">
-                  {actionInputs[action.type].fields.map((field) => {
-                    const isAiGenerated = action[field.name]?.ai;
+                  {fields.map((field) => {
+                    const isAiGenerated = !!action[field.name]?.ai;
 
-                    const value = watch(`actions.${i}.${field.name}.value`);
+                    const value =
+                      watch(`actions.${i}.${field.name}.value`) || "";
+                    const setManually = !!watch(
+                      `actions.${i}.${field.name}.setManually`,
+                    );
 
                     return (
-                      <div key={field.label}>
-                        <div className="flex items-center justify-between">
-                          <Label name={field.name} label={field.label} />
-                          {field.name === "label" && (
-                            <div className="flex items-center space-x-2">
-                              <TooltipExplanation text="Enable for AI-generated values unique to each email. Put the prompt inside braces {{your prompt here}}. Disable to use a fixed value." />
-                              <Toggle
-                                name={`actions.${i}.${field.name}.ai`}
-                                label="AI generated"
-                                enabled={isAiGenerated || false}
-                                onChange={(enabled) => {
-                                  setValue(
-                                    `actions.${i}.${field.name}`,
-                                    enabled
-                                      ? { value: "", ai: true }
-                                      : { value: "", ai: false },
-                                  );
-                                }}
-                              />
-                            </div>
-                          )}
-                        </div>
-
-                        {field.name === "label" && !isAiGenerated ? (
-                          <div className="mt-2">
-                            <LabelCombobox
-                              userLabels={userLabels}
-                              isLoading={isLoading}
-                              mutate={mutate}
-                              value={action[field.name]?.value || ""}
-                              onChangeValue={(value) => {
-                                setValue(
-                                  `actions.${i}.${field.name}.value`,
-                                  value,
-                                );
-                              }}
-                            />
-                          </div>
-                        ) : field.textArea ? (
-                          <div className="mt-2">
-                            <TextareaAutosize
-                              className="block w-full flex-1 whitespace-pre-wrap rounded-md border border-border bg-background shadow-sm focus:border-black focus:ring-black sm:text-sm"
-                              minRows={3}
-                              rows={3}
-                              placeholder="Add text or use {{AI prompts}}. e.g. Hi {{write greeting}}"
-                              value={value || ""}
-                              {...register(`actions.${i}.${field.name}.value`)}
-                            />
-                          </div>
-                        ) : (
-                          <div className="mt-2">
-                            <input
-                              className="block w-full flex-1 rounded-md border border-border bg-background shadow-sm focus:border-black focus:ring-black sm:text-sm"
-                              type="text"
-                              placeholder="Add text or use {{AI prompts}}. e.g. Hi {{write greeting}}"
-                              {...register(`actions.${i}.${field.name}.value`)}
-                            />
-                          </div>
-                        )}
-
-                        {hasVariables(value) && (
-                          <div className="mt-2 whitespace-pre-wrap rounded-md bg-muted/50 p-2 font-mono text-sm text-foreground">
-                            {(value || "")
-                              .split(/(\{\{.*?\}\})/g)
-                              .map((part, i) =>
-                                part.startsWith("{{") ? (
-                                  <span
-                                    key={i}
-                                    className="rounded bg-blue-100 px-1 text-blue-500 dark:bg-blue-950 dark:text-blue-400"
-                                  >
-                                    <sub className="font-sans">AI</sub>
-                                    {part}
-                                  </span>
-                                ) : (
-                                  <span key={i}>{part}</span>
-                                ),
-                              )}
-                          </div>
-                        )}
-
-                        {errors.actions?.[i]?.[field.name]?.message ? (
-                          <ErrorMessage
-                            message={
-                              errors.actions?.[i]?.[field.name]?.message!
-                            }
-                          />
-                        ) : null}
-                      </div>
+                      <ActionField
+                        key={field.label}
+                        field={field}
+                        action={action}
+                        index={i}
+                        isAiGenerated={isAiGenerated}
+                        value={value}
+                        setManually={setManually}
+                        register={register}
+                        setValue={setValue}
+                        errors={errors}
+                        userLabels={userLabels}
+                        isLoading={isLoading}
+                        mutate={mutate}
+                      />
                     );
                   })}
+
+                  {action.type === ActionType.TRACK_THREAD && (
+                    <ReplyTrackerAction />
+                  )}
                 </div>
               </div>
             </CardBasic>
@@ -792,33 +786,167 @@ function LabelCombobox({
   );
 }
 
-function ReplyTrackerActionSection() {
+function ReplyTrackerAction() {
   return (
-    <CardBasic>
-      <div className="space-y-4">
-        <div>
-          <TypographyH3>Reply Zero Tracker</TypographyH3>
-          <SectionDescription>
-            This rule will automatically track emails waiting for replies and
-            help manage your follow-ups:
-          </SectionDescription>
-        </div>
-
-        <ul className="list-inside list-disc space-y-2 text-sm text-muted-foreground">
-          <li>
-            Emails will be labeled as "{NEEDS_REPLY_LABEL_NAME}" and "
-            {AWAITING_REPLY_LABEL_NAME}" when appropriate
-          </li>
-          <li>AI will draft replies when confident it can help</li>
-        </ul>
-
-        <div className="rounded-md bg-muted/50 p-4">
-          <p className="text-sm text-muted-foreground">
-            These actions are automatically configured for reply tracking and
-            cannot be modified.
-          </p>
-        </div>
+    <div className="flex h-full items-center justify-center">
+      <div className="max-w-sm text-center text-sm text-muted-foreground">
+        Automatically updates the label when you reply.
       </div>
-    </CardBasic>
+    </div>
+  );
+}
+
+function ActionField({
+  field,
+  action,
+  index: i,
+  isAiGenerated,
+  value,
+  setManually,
+  register,
+  setValue,
+  errors,
+  userLabels,
+  isLoading,
+  mutate,
+}: {
+  field: {
+    name: "label" | "subject" | "content" | "to" | "cc" | "bcc" | "url";
+    label: string;
+    textArea?: boolean;
+  };
+  action: CreateRuleBody["actions"][number];
+  index: number;
+  isAiGenerated: boolean;
+  value: string | undefined;
+  setManually: boolean;
+  register: UseFormRegister<CreateRuleBody>;
+  setValue: UseFormSetValue<CreateRuleBody>;
+  errors: any; // Unfortunately, we need to use any here for now
+  userLabels: NonNullable<LabelsResponse["labels"]>;
+  isLoading: boolean;
+  mutate: () => void;
+}) {
+  // Get the typed field value safely
+  const getFieldValue = (fieldName: string): string => {
+    // Type assertion to access the field by name
+    const fieldValue = action[fieldName as keyof typeof action];
+    if (fieldValue && typeof fieldValue === "object" && "value" in fieldValue) {
+      return (fieldValue.value as string) || "";
+    }
+    return "";
+  };
+
+  // Check if this field has an error
+  const fieldError = errors?.actions?.[i]?.[field.name]?.message;
+
+  const isDraftContent =
+    field.name === "content" && action.type === ActionType.DRAFT_EMAIL;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <Label name={field.name} label={field.label} />
+        {field.name === "label" && (
+          <div className="flex items-center space-x-2">
+            <TooltipExplanation text="Enable for AI-generated values unique to each email. Put the prompt inside braces {{your prompt here}}. Disable to use a fixed value." />
+            <Toggle
+              name={`actions.${i}.${field.name}.ai`}
+              label="AI generated"
+              enabled={isAiGenerated || false}
+              onChange={(enabled: boolean) => {
+                setValue(
+                  `actions.${i}.${field.name}`,
+                  enabled ? { value: "", ai: true } : { value: "", ai: false },
+                );
+              }}
+            />
+          </div>
+        )}
+      </div>
+
+      {field.name === "label" && !isAiGenerated ? (
+        <div className="mt-2">
+          <LabelCombobox
+            userLabels={userLabels}
+            isLoading={isLoading}
+            mutate={mutate}
+            value={getFieldValue(field.name)}
+            onChangeValue={(newValue: string) => {
+              setValue(`actions.${i}.${field.name}.value`, newValue);
+            }}
+          />
+        </div>
+      ) : isDraftContent && !setManually ? (
+        <div className="flex h-full flex-col items-center justify-center gap-2">
+          <div className="max-w-sm text-center text-sm text-muted-foreground">
+            Our AI will generate a reply using your knowledge base and previous
+            conversations with the sender
+          </div>
+
+          <Button
+            variant="link"
+            size="xs"
+            onClick={() => {
+              setValue(`actions.${i}.content.setManually`, true);
+            }}
+          >
+            Set manually
+          </Button>
+        </div>
+      ) : field.textArea ? (
+        <div className="mt-2">
+          <TextareaAutosize
+            className="block w-full flex-1 whitespace-pre-wrap rounded-md border border-border bg-background shadow-sm focus:border-black focus:ring-black sm:text-sm"
+            minRows={3}
+            rows={3}
+            placeholder="Add text or use {{AI prompts}}. e.g. Hi {{write greeting}}"
+            value={value || ""}
+            {...register(`actions.${i}.${field.name}.value`)}
+          />
+
+          {isDraftContent && setManually && (
+            <Button
+              variant="link"
+              size="xs"
+              onClick={() => {
+                setValue(`actions.${i}.content.setManually`, false);
+              }}
+            >
+              Auto draft
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="mt-2">
+          <input
+            className="block w-full flex-1 rounded-md border border-border bg-background shadow-sm focus:border-black focus:ring-black sm:text-sm"
+            type="text"
+            placeholder="Add text or use {{AI prompts}}. e.g. Hi {{write greeting}}"
+            {...register(`actions.${i}.${field.name}.value`)}
+          />
+        </div>
+      )}
+
+      {hasVariables(value) && (
+        <div className="mt-2 whitespace-pre-wrap rounded-md bg-muted/50 p-2 font-mono text-sm text-foreground">
+          {(value || "").split(/(\{\{.*?\}\})/g).map((part, idx) =>
+            part.startsWith("{{") ? (
+              <span
+                key={idx}
+                className="rounded bg-blue-100 px-1 text-blue-500 dark:bg-blue-950 dark:text-blue-400"
+              >
+                <sub className="font-sans">AI</sub>
+                {part}
+              </span>
+            ) : (
+              <span key={idx}>{part}</span>
+            ),
+          )}
+        </div>
+      )}
+
+      {fieldError && <ErrorMessage message={fieldError.toString()} />}
+    </div>
   );
 }

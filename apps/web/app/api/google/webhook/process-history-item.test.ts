@@ -12,10 +12,13 @@ import { getMessage } from "@/utils/gmail/message";
 import { markMessageAsProcessing } from "@/utils/redis/message-processing";
 import { GmailLabel } from "@/utils/gmail/label";
 import { categorizeSender } from "@/utils/categorize/senders/categorize";
-import { runRulesOnMessage } from "@/utils/ai/choose-rule/run-rules";
+import { runRules } from "@/utils/ai/choose-rule/run-rules";
 import { processAssistantEmail } from "@/utils/assistant/process-assistant-email";
 
 vi.mock("server-only", () => ({}));
+vi.mock("next/server", () => ({
+  after: vi.fn((callback) => callback()),
+}));
 vi.mock("@/utils/prisma");
 vi.mock("@/utils/redis/message-processing", () => ({
   markMessageAsProcessing: vi.fn().mockResolvedValue(true),
@@ -42,6 +45,23 @@ vi.mock("@/utils/gmail/message", () => ({
     },
   }),
 }));
+vi.mock("@/utils/gmail/thread", () => ({
+  getThreadMessages: vi.fn().mockResolvedValue([
+    {
+      id: "123",
+      threadId: "thread-123",
+      labelIds: ["INBOX"],
+      internalDate: "1704067200000", // 2024-01-01T00:00:00Z
+      headers: {
+        from: "sender@example.com",
+        to: "user@example.com",
+        subject: "Test Email",
+        date: "2024-01-01T00:00:00Z",
+      },
+      body: "Hello World",
+    },
+  ]),
+}));
 vi.mock("@/utils/assistant/is-assistant-email", () => ({
   isAssistantEmail: vi.fn().mockReturnValue(false),
 }));
@@ -57,7 +77,7 @@ vi.mock("@/utils/categorize/senders/categorize", () => ({
   categorizeSender: vi.fn(),
 }));
 vi.mock("@/utils/ai/choose-rule/run-rules", () => ({
-  runRulesOnMessage: vi.fn(),
+  runRules: vi.fn(),
 }));
 vi.mock("@/utils/assistant/process-assistant-email", () => ({
   processAssistantEmail: vi.fn().mockResolvedValue(undefined),
@@ -157,7 +177,6 @@ describe("processHistoryItem", () => {
           { name: "Subject", value: "Test Email" },
           { name: "Date", value: "2024-01-01T00:00:00Z" },
         ],
-        parts: [],
       },
     });
 
@@ -191,7 +210,7 @@ describe("processHistoryItem", () => {
         from: "sender@example.com",
         subject: "Test Email",
         content: expect.any(String),
-        messageId: "123",
+        id: "123",
         threadId: "thread-123",
         date: expect.any(Date),
       }),
@@ -222,7 +241,7 @@ describe("processHistoryItem", () => {
 
     // Verify that further processing is skipped
     expect(categorizeSender).not.toHaveBeenCalled();
-    expect(runRulesOnMessage).not.toHaveBeenCalled();
+    expect(runRules).not.toHaveBeenCalled();
   });
 });
 

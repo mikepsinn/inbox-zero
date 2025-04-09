@@ -3,7 +3,7 @@ import { withError } from "@/utils/middleware";
 import { env } from "@/env";
 import { processHistoryForUser } from "@/app/api/google/webhook/process-history";
 import { logger } from "@/app/api/google/webhook/logger";
-export const dynamic = "force-dynamic";
+
 export const maxDuration = 120;
 
 // Google PubSub calls this endpoint each time a user recieves an email. We subscribe for updates via `api/google/watch`
@@ -34,8 +34,10 @@ export const POST = withError(async (request: Request) => {
   return await processHistoryForUser(decodedData);
 });
 
-function decodeHistoryId(body: any) {
-  const data = body.message.data;
+function decodeHistoryId(body: { message?: { data?: string } }) {
+  const data = body?.message?.data;
+
+  if (!data) throw new Error("No data found");
 
   // data is base64url-encoded JSON
   const base64 = data.replace(/-/g, "+").replace(/_/g, "/");

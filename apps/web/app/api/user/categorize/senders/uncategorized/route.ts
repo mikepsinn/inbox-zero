@@ -9,7 +9,7 @@ export type UncategorizedSendersResponse = {
   nextOffset?: number;
 };
 
-export const GET = withError(async (request: Request) => {
+export const GET = withError(async (request) => {
   const sessionResult = await getSessionAndGmailClient();
   if (isActionError(sessionResult))
     return NextResponse.json({ error: sessionResult.error });
@@ -19,7 +19,6 @@ export const GET = withError(async (request: Request) => {
   const offset = Number.parseInt(url.searchParams.get("offset") || "0");
 
   const result = await getUncategorizedSenders({
-    email: user.email,
     userId: user.id,
     offset,
   });

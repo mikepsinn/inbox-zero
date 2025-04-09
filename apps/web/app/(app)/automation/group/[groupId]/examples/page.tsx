@@ -1,6 +1,7 @@
 "use client";
 
 import useSWR from "swr";
+import { use } from "react";
 import groupBy from "lodash/groupBy";
 import { TopSection } from "@/components/TopSection";
 import { ExampleList } from "@/app/(app)/automation/rule/[ruleId]/examples/example-list";
@@ -9,11 +10,10 @@ import { LoadingContent } from "@/components/LoadingContent";
 
 export const dynamic = "force-dynamic";
 
-export default function RuleExamplesPage({
-  params,
-}: {
-  params: { groupId: string };
+export default function RuleExamplesPage(props: {
+  params: Promise<{ groupId: string }>;
 }) {
+  const params = use(props.params);
   const { data, isLoading, error } = useSWR<GroupEmailsResponse>(
     `/api/user/group/${params.groupId}/messages`,
   );
@@ -26,21 +26,16 @@ export default function RuleExamplesPage({
   return (
     <div>
       <TopSection
-        title="Examples of emails that match this group"
+        title="Examples of emails that match"
         descriptionComponent={
           isLoading ? (
             <p>Loading...</p>
           ) : (
             <>
               {hasExamples ? (
-                <p>
-                  Here are some examples of previous emails that match this
-                  rule.
-                </p>
+                <p>Here are examples of emails that match.</p>
               ) : (
-                <p>
-                  We did not find any examples to show you that match this rule.
-                </p>
+                <p>We did not find any examples to show you that match.</p>
               )}
             </>
           )

@@ -1,11 +1,10 @@
 "use client";
 
-import { subDays } from "date-fns";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import type { DateRange } from "react-day-picker";
+import subDays from "date-fns/subDays";
 import { DetailedStats } from "@/app/(app)/stats/DetailedStats";
 import { LoadStatsButton } from "@/app/(app)/stats/LoadStatsButton";
-import { LargestEmails } from "@/app/(app)/stats/LargestEmails";
 import { EmailAnalytics } from "@/app/(app)/stats/EmailAnalytics";
 import { StatsSummary } from "@/app/(app)/stats/StatsSummary";
 import { StatsOnboarding } from "@/app/(app)/stats/StatsOnboarding";
@@ -17,7 +16,6 @@ import { BulkUnsubscribeSummary } from "@/app/(app)/bulk-unsubscribe/BulkUnsubsc
 import { CardBasic } from "@/components/ui/card";
 import { Title } from "@tremor/react";
 import { TopBar } from "@/components/TopBar";
-// import { Insights } from "@/app/(app)/stats/Insights";
 
 const selectOptions = [
   { label: "Last week", value: "7" },
@@ -116,14 +114,6 @@ export function Stats() {
 
       <div className="mt-4 px-4">
         <EmailActionsAnalytics />
-      </div>
-
-      {/* <div className="px-4">
-        <Insights />
-      </div> */}
-
-      <div className="mt-4 px-4">
-        <LargestEmails refreshInterval={refreshInterval} />
       </div>
 
       <StatsOnboarding />

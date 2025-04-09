@@ -1,9 +1,9 @@
 "use server";
 
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
 import { auth, signOut } from "@/app/api/auth/[...nextauth]/auth";
 import prisma from "@/utils/prisma";
-import { deleteTinybirdEmails } from "@inboxzero/tinybird";
 import { withActionInstrumentation } from "@/utils/actions/middleware";
 import { deleteUser } from "@/utils/user/delete";
 import { extractGmailSignature } from "@/utils/gmail/signature";
@@ -28,6 +28,8 @@ export const saveAboutAction = withActionInstrumentation(
       where: { email: session.user.email },
       data: { about: data.about },
     });
+
+    revalidatePath("/settings");
   },
 );
 
@@ -87,7 +89,9 @@ export const resetAnalyticsAction = withActionInstrumentation(
     const session = await auth();
     if (!session?.user.email) return { error: "Not logged in" };
 
-    await deleteTinybirdEmails({ email: session.user.email });
+    await prisma.emailMessage.deleteMany({
+      where: { userId: session.user.id },
+    });
   },
 );
 

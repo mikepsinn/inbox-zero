@@ -7,19 +7,17 @@ import {
 } from "@/utils/actions/generate-reply.validation";
 import { withActionInstrumentation } from "@/utils/actions/middleware";
 import { aiGenerateNudge } from "@/utils/ai/reply/generate-nudge";
-import { aiGenerateReply } from "@/utils/ai/reply/generate-reply";
 import { emailToContent } from "@/utils/mail";
 import { getReply, saveReply } from "@/utils/redis/reply";
-import { getReplyTrackingRule } from "@/utils/reply-tracker";
-import { getAiUserByEmail } from "@/utils/user/get";
+import { getAiUser } from "@/utils/user/get";
 
-export const generateReplyAction = withActionInstrumentation(
-  "generateReply",
+export const generateNudgeReplyAction = withActionInstrumentation(
+  "generateNudgeReply",
   async (unsafeData: GenerateReplySchema) => {
     const session = await auth();
     if (!session?.user.email) return { error: "Not authenticated" };
 
-    const user = await getAiUserByEmail({ email: session.user.email });
+    const user = await getAiUser({ id: session.user.id });
 
     if (!user) return { error: "User not found" };
 
@@ -37,10 +35,6 @@ export const generateReplyAction = withActionInstrumentation(
 
     if (reply) return { text: reply };
 
-    const rule = await getReplyTrackingRule(user.id);
-
-    if (!rule) return { error: "No reply tracking rule found" };
-
     const messages = data.messages.map((msg) => ({
       ...msg,
       date: new Date(msg.date),
@@ -51,15 +45,7 @@ export const generateReplyAction = withActionInstrumentation(
       }),
     }));
 
-    const text =
-      data.type === "nudge"
-        ? await aiGenerateNudge({ messages, user })
-        : await aiGenerateReply({
-            messages,
-            user,
-            instructions: rule.instructions,
-          });
-
+    const text = await aiGenerateNudge({ messages, user });
     await saveReply({
       userId: user.id,
       messageId: lastMessage.id,
